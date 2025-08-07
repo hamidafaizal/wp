@@ -1,67 +1,219 @@
-import { useState } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
-
-// // Data dummy untuk daftar HP
-const initialPhones = [
-  { id: 1, name: 'Samsung Galaxy S23', code: 'A1B2-C3D4' },
-  { id: 2, name: 'iPhone 15 Pro', code: 'E5F6-G7H8' },
-  { id: 3, name: 'Google Pixel 8', code: 'I9J0-K1L2' },
-];
+import { useState, useEffect } from 'react';
+import { supabase } from '../supabaseClient';
+import { Plus, Trash2, X, ClipboardCopy, Smartphone } from 'lucide-react';
+import { v4 as uuidv4 } from 'uuid';
 
 // // Komponen halaman untuk manajemen HP
 function ManajemenHp() {
-  const [phones, setPhones] = useState(initialPhones);
+  const [phones, setPhones] = useState([]);
+  const [newPhoneName, setNewPhoneName] = useState('');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [verificationCode, setVerificationCode] = useState('');
+  const [message, setMessage] = useState('');
+  const [userId, setUserId] = useState(null);
 
-  console.log('ManajemenHp component rendered.'); // // Log untuk debugging
-
-  // // Fungsi untuk menambah HP (placeholder)
-  const handleAddPhone = () => {
-    console.log('Add Phone button clicked.');
-    // // Logika untuk membuka modal atau form tambah HP akan ditambahkan di sini
+  // // Mengambil daftar HP dari Supabase
+  const fetchPhones = async (currentUserId) => {
+    console.log('Fetching phones for user:', currentUserId);
+    if (!currentUserId) {
+      console.log('User ID is null, skipping fetch.');
+      setLoading(false);
+      return;
+    }
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('registered_phones')
+        .select('*')
+        .eq('user_id', currentUserId);
+      if (error) {
+        console.error('Error fetching phones:', error.message);
+        throw error;
+      }
+      setPhones(data);
+      console.log('Fetched phones:', data);
+    } catch (error) {
+      setMessage(`Error: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // // Fungsi untuk menghapus HP (placeholder)
-  const handleDeletePhone = (id) => {
-    console.log(`Delete button clicked for phone ID: ${id}`);
-    // // Logika untuk menghapus HP dari database akan ditambahkan di sini
-    setPhones(phones.filter(phone => phone.id !== id));
+  useEffect(() => {
+    // // Mendengarkan perubahan status autentikasi
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      const currentUserId = session?.user?.id;
+      setUserId(currentUserId);
+      console.log('Auth state changed, user ID:', currentUserId);
+      fetchPhones(currentUserId);
+    });
+
+    // // Ambil sesi awal
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      const currentUserId = session?.user?.id;
+      setUserId(currentUserId);
+      fetchPhones(currentUserId);
+    });
+    
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // // Fungsi untuk menangani penambahan HP
+  const handleAddPhone = async () => {
+    console.log('Attempting to add new phone:', newPhoneName);
+    setSubmitting(true);
+    setMessage('');
+    try {
+      if (!newPhoneName) {
+        throw new Error('Nama HP tidak boleh kosong.');
+      }
+      const { data, error } = await supabase.rpc('register_phone_rpc', {
+        phone_name_in: newPhoneName
+      });
+      if (error) {
+        console.error('Error adding phone:', error.message);
+        throw error;
+      }
+      
+      setVerificationCode(data);
+      setMessage('HP berhasil didaftarkan. Gunakan kode ini untuk verifikasi di PWA.');
+      console.log('Phone registered successfully, verification code:', data);
+      
+      // // Memperbarui daftar HP setelah pendaftaran
+      fetchPhones(userId);
+      setNewPhoneName('');
+
+    } catch (error) {
+      setMessage(`Error: ${error.message}`);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // // Fungsi untuk menghapus HP
+  const handleDeletePhone = async (id) => {
+    console.log(`Attempting to delete phone with ID: ${id}`);
+    const confirmed = window.confirm('Apakah Anda yakin ingin menghapus HP ini?');
+    if (!confirmed) return;
+    
+    try {
+      const { error } = await supabase
+        .from('registered_phones')
+        .delete()
+        .eq('id', id);
+      if (error) {
+        console.error('Error deleting phone:', error.message);
+        throw error;
+      }
+      
+      setPhones(phones.filter(phone => phone.id !== id));
+      setMessage('HP berhasil dihapus.');
+      console.log(`Phone with ID: ${id} deleted successfully.`);
+    } catch (error) {
+      setMessage(`Error: ${error.message}`);
+    }
+  };
+  
+  // // Fungsi untuk menyalin kode verifikasi
+  const handleCopyCode = (code) => {
+    document.execCommand('copy', false, code);
+    setMessage('Kode verifikasi berhasil disalin!');
+    console.log('Verification code copied to clipboard.');
   };
 
   return (
     <div className="glass-card w-full h-full flex flex-col">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold">Manajemen Hp</h1>
-        <button onClick={handleAddPhone} className="glass-button flex items-center">
+        <button onClick={() => setIsModalOpen(true)} className="glass-button flex items-center">
           <Plus size={20} className="mr-2" />
           <span>Tambah Hp</span>
         </button>
       </div>
+      
+      {message && <p className={`text-center mb-4 ${message.startsWith('Error') ? 'text-red-400' : 'text-green-400'}`}>{message}</p>}
 
-      {/* // List HP */}
-      <div className="overflow-x-auto">
-        <table className="w-full text-left">
-          <thead>
-            <tr className="border-b border-white border-opacity-20">
-              <th className="p-4">Nama Hp</th>
-              <th className="p-4">Kode Verifikasi</th>
-              <th className="p-4 text-right">Aksi</th>
-            </tr>
-          </thead>
-          <tbody>
-            {phones.map((phone) => (
-              <tr key={phone.id} className="border-b border-white border-opacity-10 hover:bg-white hover:bg-opacity-5">
-                <td className="p-4">{phone.name}</td>
-                <td className="p-4 font-mono">{phone.code}</td>
-                <td className="p-4 text-right">
-                  <button onClick={() => handleDeletePhone(phone.id)} className="text-red-400 hover:text-red-300">
-                    <Trash2 size={20} />
-                  </button>
-                </td>
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="glass-card w-full max-w-md relative">
+            <button onClick={() => { setIsModalOpen(false); setVerificationCode(''); }} className="absolute top-4 right-4 text-gray-400 hover:text-white">
+              <X size={24} />
+            </button>
+            <h2 className="text-2xl font-bold mb-4">Tambah HP Baru</h2>
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="phone-name" className="block text-sm font-medium mb-1">Nama HP</label>
+                <input
+                  type="text"
+                  id="phone-name"
+                  value={newPhoneName}
+                  onChange={(e) => setNewPhoneName(e.target.value)}
+                  className="w-full p-3 bg-white bg-opacity-20 rounded-lg border border-white border-opacity-30 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  placeholder="Contoh: HP Faiz"
+                />
+              </div>
+              <button onClick={handleAddPhone} disabled={submitting} className="glass-button w-full">
+                {submitting ? 'Menambahkan...' : 'Daftarkan HP'}
+              </button>
+              {verificationCode && (
+                <div className="bg-white bg-opacity-10 p-4 rounded-lg mt-4 text-center">
+                  <p className="text-sm text-gray-300">Kode Verifikasi:</p>
+                  <p className="text-3xl font-bold tracking-widest mt-2">{verificationCode}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="flex-grow flex items-center justify-center">
+          <div className="w-10 h-10 border-4 border-t-transparent border-blue-500 rounded-full animate-spin"></div>
+        </div>
+      ) : phones.length === 0 ? (
+        <div className="flex-grow flex flex-col items-center justify-center text-gray-400">
+          <Smartphone size={64} className="mb-4" />
+          <p>Belum ada HP yang terdaftar.</p>
+        </div>
+      ) : (
+        <div className="overflow-x-auto flex-grow">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="border-b border-white border-opacity-20">
+                <th className="p-4">Nama Hp</th>
+                <th className="p-4">Kode Verifikasi</th>
+                <th className="p-4">Status</th>
+                <th className="p-4 text-right">Aksi</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {phones.map((phone) => (
+                <tr key={phone.id} className="border-b border-white border-opacity-10 hover:bg-white hover:bg-opacity-5">
+                  <td className="p-4">{phone.phone_name}</td>
+                  <td className="p-4 font-mono flex items-center gap-2">
+                    {phone.verification_code}
+                    <button onClick={() => handleCopyCode(phone.verification_code)} className="p-1 rounded-lg text-gray-400 hover:bg-white hover:bg-opacity-10">
+                      <ClipboardCopy size={16} />
+                    </button>
+                  </td>
+                  <td className="p-4">
+                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${phone.is_verified ? 'bg-green-500 bg-opacity-30 text-green-200' : 'bg-yellow-500 bg-opacity-30 text-yellow-200'}`}>
+                      {phone.is_verified ? 'Terverifikasi' : 'Belum Verifikasi'}
+                    </span>
+                  </td>
+                  <td className="p-4 text-right">
+                    <button onClick={() => handleDeletePhone(phone.id)} className="text-red-400 hover:text-red-300">
+                      <Trash2 size={20} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

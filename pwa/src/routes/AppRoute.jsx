@@ -1,7 +1,8 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import App from '../App';
 import Login from '../auth/Login';
-// import ProtectedRoute from '../auth/ProtectedRoute'; // // Proteksi dinonaktifkan sementara
+import Register from '../auth/Register';
+import ProtectedRoute from '../auth/ProtectedRoute';
 
 // // Komponen untuk mengatur semua routing PWA
 function AppRoute() {
@@ -10,12 +11,19 @@ function AppRoute() {
   return (
     <Router>
       <Routes>
-        {/* // Route utama sekarang langsung menampilkan App tanpa proteksi */}
+        {/* // Rute utama yang dilindungi */}
         <Route 
           path="/" 
-          element={<App />} 
+          element={
+            <ProtectedRoute>
+              <App />
+            </ProtectedRoute>
+          } 
         />
         <Route path="/login" element={<Login />} />
+        {/* // Tambahkan rute untuk halaman registrasi */}
+        <Route path="/register" element={<Register />} />
+        {/* // Rute /verify dihilangkan, sekarang dihandle oleh App.jsx */}
       </Routes>
     </Router>
   );
