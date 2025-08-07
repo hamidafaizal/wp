@@ -1,10 +1,11 @@
-import { StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
-import './index.css'
-import App from './App.jsx'
+import { StrictMode } from 'react';
+import { createRoot } from 'react-dom/client';
+import './index.css';
+import AppRoute from './routes/AppRoute'; // // Mengimpor AppRoute, bukan App
 
+// // Merender komponen AppRoute sebagai root aplikasi
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <App />
+    <AppRoute />
   </StrictMode>,
-)
+);
