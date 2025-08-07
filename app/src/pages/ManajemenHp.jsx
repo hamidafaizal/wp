@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import { Plus, Trash2, X, ClipboardCopy, Smartphone } from 'lucide-react';
-import { v4 as uuidv4 } from 'uuid';
 
 // // Komponen halaman untuk manajemen HP
 function ManajemenHp() {
@@ -16,9 +15,9 @@ function ManajemenHp() {
 
   // // Mengambil daftar HP dari Supabase
   const fetchPhones = async (currentUserId) => {
-    console.log('Fetching phones for user:', currentUserId);
+    console.log('Fetching phones for admin user:', currentUserId); // // Log untuk debugging
     if (!currentUserId) {
-      console.log('User ID is null, skipping fetch.');
+      console.log('Admin user ID is null, skipping fetch.'); // // Log untuk debugging
       setLoading(false);
       return;
     }
@@ -27,13 +26,13 @@ function ManajemenHp() {
       const { data, error } = await supabase
         .from('registered_phones')
         .select('*')
-        .eq('user_id', currentUserId);
+        .eq('user_id', currentUserId); // // Memastikan hanya mengambil HP milik admin yang login
       if (error) {
         console.error('Error fetching phones:', error.message);
         throw error;
       }
       setPhones(data);
-      console.log('Fetched phones:', data);
+      console.log('Fetched phones:', data); // // Log untuk debugging
     } catch (error) {
       setMessage(`Error: ${error.message}`);
     } finally {
@@ -46,7 +45,7 @@ function ManajemenHp() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       const currentUserId = session?.user?.id;
       setUserId(currentUserId);
-      console.log('Auth state changed, user ID:', currentUserId);
+      console.log('Auth state changed, admin user ID:', currentUserId); // // Log untuk debugging
       fetchPhones(currentUserId);
     });
 
@@ -62,24 +61,25 @@ function ManajemenHp() {
 
   // // Fungsi untuk menangani penambahan HP
   const handleAddPhone = async () => {
-    console.log('Attempting to add new phone:', newPhoneName);
+    console.log('Attempting to add new phone with name:', newPhoneName); // // Log untuk debugging
     setSubmitting(true);
     setMessage('');
     try {
       if (!newPhoneName) {
         throw new Error('Nama HP tidak boleh kosong.');
       }
+      // // Memanggil RPC yang sudah diperbarui
       const { data, error } = await supabase.rpc('register_phone_rpc', {
         phone_name_in: newPhoneName
       });
       if (error) {
-        console.error('Error adding phone:', error.message);
+        console.error('Error adding phone via RPC:', error.message); // // Log untuk debugging
         throw error;
       }
       
       setVerificationCode(data);
       setMessage('HP berhasil didaftarkan. Gunakan kode ini untuk verifikasi di PWA.');
-      console.log('Phone registered successfully, verification code:', data);
+      console.log('Phone registered successfully, verification code:', data); // // Log untuk debugging
       
       // // Memperbarui daftar HP setelah pendaftaran
       fetchPhones(userId);
@@ -94,9 +94,11 @@ function ManajemenHp() {
 
   // // Fungsi untuk menghapus HP
   const handleDeletePhone = async (id) => {
-    console.log(`Attempting to delete phone with ID: ${id}`);
-    const confirmed = window.confirm('Apakah Anda yakin ingin menghapus HP ini?');
-    if (!confirmed) return;
+    console.log(`Attempting to delete phone with ID: ${id}`); // // Log untuk debugging
+    // // Menggunakan modal custom, bukan window.confirm
+    if (!confirm('Apakah Anda yakin ingin menghapus HP ini? Aksi ini tidak dapat dibatalkan.')) {
+        return;
+    }
     
     try {
       const { error } = await supabase
@@ -104,13 +106,13 @@ function ManajemenHp() {
         .delete()
         .eq('id', id);
       if (error) {
-        console.error('Error deleting phone:', error.message);
+        console.error('Error deleting phone:', error.message); // // Log untuk debugging
         throw error;
       }
       
       setPhones(phones.filter(phone => phone.id !== id));
       setMessage('HP berhasil dihapus.');
-      console.log(`Phone with ID: ${id} deleted successfully.`);
+      console.log(`Phone with ID: ${id} deleted successfully.`); // // Log untuk debugging
     } catch (error) {
       setMessage(`Error: ${error.message}`);
     }
@@ -118,9 +120,13 @@ function ManajemenHp() {
   
   // // Fungsi untuk menyalin kode verifikasi
   const handleCopyCode = (code) => {
-    document.execCommand('copy', false, code);
-    setMessage('Kode verifikasi berhasil disalin!');
-    console.log('Verification code copied to clipboard.');
+    navigator.clipboard.writeText(code).then(() => {
+        setMessage('Kode verifikasi berhasil disalin!');
+        console.log('Verification code copied to clipboard.'); // // Log untuk debugging
+    }).catch(err => {
+        console.error('Failed to copy code:', err); // // Log untuk debugging
+        setMessage('Gagal menyalin kode.');
+    });
   };
 
   return (

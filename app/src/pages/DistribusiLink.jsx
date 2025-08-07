@@ -2,20 +2,13 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../supabaseClient';
 import { Send, Share2, Save } from 'lucide-react';
 
-// // Data dummy untuk dropdown HP
-const dummyPhones = [
-  { id: 1, name: 'Samsung Galaxy S23' },
-  { id: 2, name: 'iPhone 15 Pro' },
-  { id: 3, name: 'Google Pixel 8' },
-];
-
 // // Komponen terpisah untuk satu card batch
-function BatchCard({ batch, onCapacityChange, onSend }) {
+function BatchCard({ batch, onCapacityChange, onSend, phones, onPhoneChange }) {
   const [isSending, setIsSending] = useState(false);
 
   const handleSend = async () => {
     setIsSending(true);
-    await onSend(batch.id); // // Memanggil fungsi onSend dari parent
+    await onSend(batch.id);
     setIsSending(false);
   };
 
@@ -23,7 +16,7 @@ function BatchCard({ batch, onCapacityChange, onSend }) {
     <div className="bg-white bg-opacity-10 p-6 rounded-xl border border-white border-opacity-20">
       <div className="flex justify-between items-center mb-4">
         <h3 className="text-xl font-bold">Batch {batch.batch_number}</h3>
-        <button onClick={handleSend} disabled={isSending || batch.links?.length === 0} className="glass-button flex items-center text-sm py-1 px-3 disabled:opacity-50 disabled:cursor-not-allowed">
+        <button onClick={handleSend} disabled={isSending || !batch.selected_phone_id || batch.links?.length === 0} className="glass-button flex items-center text-sm py-1 px-3 disabled:opacity-50 disabled:cursor-not-allowed">
           {isSending ? <div className="w-4 h-4 border-2 border-t-transparent border-white rounded-full animate-spin mr-2"></div> : <Send size={16} className="mr-2" />}
           {isSending ? 'Mengirim...' : 'Kirim'}
         </button>
@@ -44,10 +37,13 @@ function BatchCard({ batch, onCapacityChange, onSend }) {
             <label htmlFor={`phone-${batch.batch_number}`} className="block text-sm font-medium mb-1">Kirim ke HP</label>
             <select
               id={`phone-${batch.batch_number}`}
+              value={batch.selected_phone_id || ''}
+              onChange={(e) => onPhoneChange(batch.batch_number, e.target.value)}
               className="w-full p-2 bg-gray-700 bg-opacity-50 rounded-lg border border-white border-opacity-30 focus:outline-none focus:ring-2 focus:ring-blue-400"
             >
-              {dummyPhones.map(phone => (
-                <option key={phone.id} value={phone.id}>{phone.name}</option>
+              <option value="" disabled>Pilih HP</option>
+              {phones.map(phone => (
+                <option key={phone.id} value={phone.id}>{phone.phone_name}</option>
               ))}
             </select>
           </div>
@@ -76,6 +72,7 @@ function BatchCard({ batch, onCapacityChange, onSend }) {
 function DistribusiLink() {
   const [batchCount, setBatchCount] = useState(1);
   const [batches, setBatches] = useState([]);
+  const [phones, setPhones] = useState([]); // // State untuk menyimpan daftar HP
   const [availableLinkCount, setAvailableLinkCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
@@ -83,16 +80,23 @@ function DistribusiLink() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     setMessage('');
-    console.log('Fetching data from Supabase...');
+    console.log('Fetching data from Supabase...'); // // Log untuk debugging
     try {
+      // // Ambil daftar HP yang terdaftar
+      const { data: phoneData, error: phoneError } = await supabase.from('registered_phones').select('id, phone_name');
+      if (phoneError) throw phoneError;
+      setPhones(phoneData || []);
+      console.log('Fetched phones:', phoneData); // // Log untuk debugging
+
+      // // Ambil konfigurasi batch yang ada
       const { data: batchData, error: batchError } = await supabase.from('link_batches').select('*').order('batch_number');
       if (batchError) throw batchError;
       
       const { count, error: countError } = await supabase.from('processed_links').select('*', { count: 'exact', head: true });
       if (countError) throw countError;
 
-      console.log('Fetched batches:', batchData);
-      console.log('Available links count:', count);
+      console.log('Fetched batches:', batchData); // // Log untuk debugging
+      console.log('Available links count:', count); // // Log untuk debugging
 
       setBatches(batchData || []);
       setBatchCount(batchData?.length > 0 ? batchData.length : 1);
@@ -117,7 +121,7 @@ function DistribusiLink() {
       const newBatchArray = [];
       for (let i = 1; i <= newCount; i++) {
         const existing = currentBatches.find(b => b.batch_number === i);
-        newBatchArray.push(existing || { batch_number: i, capacity: 100, links: [] });
+        newBatchArray.push(existing || { batch_number: i, capacity: 100, links: [], selected_phone_id: null });
       }
       return newBatchArray;
     });
@@ -131,10 +135,19 @@ function DistribusiLink() {
     );
   };
 
+  const handlePhoneChange = (batchNumber, phoneId) => {
+    console.log(`Batch ${batchNumber} changed to phone ID: ${phoneId}`); // // Log untuk debugging
+    setBatches(currentBatches =>
+      currentBatches.map(b =>
+        b.batch_number === batchNumber ? { ...b, selected_phone_id: parseInt(phoneId, 10) } : b
+      )
+    );
+  };
+
   const handleSaveConfig = async () => {
     setLoading(true);
     setMessage('Menyimpan konfigurasi...');
-    console.log('Saving batch configuration:', batches);
+    console.log('Saving batch configuration:', batches); // // Log untuk debugging
     try {
       const { data: { user } } = await supabase.auth.getUser();
       
@@ -145,7 +158,8 @@ function DistribusiLink() {
         user_id: user.id,
         batch_number: b.batch_number,
         capacity: b.capacity,
-        links: []
+        links: b.links || [],
+        selected_phone_id: b.selected_phone_id
       }));
 
       const { error: insertError } = await supabase.from('link_batches').insert(newConfig);
@@ -164,13 +178,13 @@ function DistribusiLink() {
   const handleShare = async () => {
     setLoading(true);
     setMessage('Memulai proses distribusi...');
-    console.log('Invoking distribute_links_rpc function...');
+    console.log('Invoking distribute_links_rpc function...'); // // Log untuk debugging
     try {
       const { data, error } = await supabase.rpc('distribute_links_rpc');
       
       if (error) throw error;
 
-      console.log('RPC function response:', data);
+      console.log('RPC function response:', data); // // Log untuk debugging
       setMessage(data);
       await fetchData();
     } catch (error) {
@@ -181,17 +195,16 @@ function DistribusiLink() {
     }
   };
 
-  // // Fungsi baru untuk menangani pengiriman per batch
   const handleSendBatch = async (batchId) => {
     setMessage(`Mengirim Batch ID: ${batchId}...`);
-    console.log(`Invoking send_batch_and_cache_links for batch ID: ${batchId}`);
+    console.log(`Invoking send_batch_and_cache_links for batch ID: ${batchId}`); // // Log untuk debugging
     try {
       const { data, error } = await supabase.rpc('send_batch_and_cache_links', { p_batch_id: batchId });
       if (error) throw error;
 
-      console.log('Send batch response:', data);
+      console.log('Send batch response:', data); // // Log untuk debugging
       setMessage(data);
-      await fetchData(); // // Refresh data setelah berhasil
+      await fetchData();
     } catch (error) {
       console.error('Error sending batch:', error);
       setMessage(`Error: ${error.message}`);
@@ -237,7 +250,9 @@ function DistribusiLink() {
             key={batch.id || batch.batch_number} 
             batch={batch} 
             onCapacityChange={handleCapacityChange}
-            onSend={handleSendBatch} // // Melewatkan fungsi kirim ke child
+            onSend={handleSendBatch}
+            phones={phones}
+            onPhoneChange={handlePhoneChange}
           />
         ))}
       </div>

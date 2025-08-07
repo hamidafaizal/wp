@@ -21,9 +21,9 @@ function AppRoute() {
           } 
         />
         <Route path="/login" element={<Login />} />
-        {/* // Tambahkan rute untuk halaman registrasi */}
+        {/* // Rute untuk halaman registrasi */}
         <Route path="/register" element={<Register />} />
-        {/* // Rute /verify dihilangkan, sekarang dihandle oleh App.jsx */}
+        {/* // Rute /verify telah dihapus karena verifikasi sekarang menjadi bagian dari registrasi */}
       </Routes>
     </Router>
   );
